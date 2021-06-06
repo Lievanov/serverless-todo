@@ -4,12 +4,15 @@ import { DocumentClient } from 'aws-sdk/clients/dynamodb'
 import { TodoItem } from '../models/TodoItem'
 import { UpdateTodoRequest } from '../requests/UpdateTodoRequest'
 
+const AWSXRay = require('aws-xray-sdk')
+const XAWS = AWSXRay.captureAWS(AWS)
+
 export class TodoAccess {
     constructor (
-        private readonly docClient: DocumentClient = new AWS.DynamoDB.DocumentClient(),
+        private readonly docClient: DocumentClient = new XAWS.DynamoDB.DocumentClient(),
         private readonly todosTable = process.env.TODOS_TABLE,
         private readonly bucketName = process.env.IMAGES_S3_BUCKET,
-        private readonly userIdIndex = process.env.USER_ID_INDEX,
+        // private readonly userIdIndex = process.env.USER_ID_INDEX,
         private readonly urlExpiration = parseInt(process.env.SIGNED_URL_EXPIRATION),
 
         private readonly s3 = new AWS.S3({
@@ -21,7 +24,7 @@ export class TodoAccess {
     async getUserTodos(userId: string): Promise<TodoItem[]> {
         const items = await this.docClient.query({
             TableName: this.todosTable,
-            IndexName: this.userIdIndex,
+            // IndexName: this.userIdIndex,
             KeyConditionExpression: 'userId = :userId',
             ExpressionAttributeValues: {
                 ':userId': userId
@@ -31,10 +34,10 @@ export class TodoAccess {
         return items.Items as TodoItem[]
     }
 
-    async getTodoById(todoId: string): Promise<TodoItem> {
+    async getTodoById(todoId: string, userId: string): Promise<TodoItem> {
         const items = await this.docClient.get({
             TableName: this.todosTable,
-            Key: { todoId }   
+            Key: { userId, todoId }   
         }).promise()
 
         return items.Item as TodoItem
@@ -91,7 +94,7 @@ export class TodoAccess {
         console.log("your new URL: ", generatedUrl)
         await this.docClient.update({
             TableName: this.todosTable,
-            Key: { todoId },
+            Key: { userId, todoId },
             UpdateExpression: "set attachmentUrl=:URL",
             ExpressionAttributeValues: {
               ":URL": generatedUrl.split("?")[0]

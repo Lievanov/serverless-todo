@@ -4,9 +4,14 @@ service:
 plugins:
   - serverless-webpack
   - serverless-iam-roles-per-function
-  - serverless-reqvalidator-plugin
+  # - serverless-reqvalidator-plugin
 
 provider:
+
+  tracing:
+    lambda: true
+    apiGateway: true
+
   name: aws
   runtime: nodejs12.x
 
@@ -14,12 +19,26 @@ provider:
   region: ${opt:region, 'us-east-1'}
   environment:
     TODOS_TABLE: Todos-${self:provider.stage}
-    USER_ID_INDEX: UserIdIndex
+    # USER_ID_INDEX: UserIdIndex
     IMAGES_S3_BUCKET: todos-270184201910-${self:provider.stage}
     SIGNED_URL_EXPIRATION: 300
 
-functions:
+custom:
+  documentation:
+    api: 
+      info:
+        version: v1.0.0
+        title: Todo Serverless
+        description: Todo Serverless app
+    # models:
+    #   - name: CreateTodoRequest
+    #     contextType: application/json
+    #     schema: ${file(models/create-todo-request.json)}
+    #   - name: UpdateTodoRequest
+    #     contextType: application/json
+    #     schema: ${file(models/update-todo-request.json)}
 
+functions:
   Auth:
     handler: src/lambda/auth/auth0Authorizer.handler
 
@@ -38,10 +57,10 @@ functions:
         Action: 
           - dynamodb:Query
         Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
-      - Effect: Allow
-        Action:
-          - dynamodb:Query
-        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}/index/${self:provider.environment.USER_ID_INDEX}
+      # - Effect: Allow
+      #   Action:
+      #     - dynamodb:Query
+      #   Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}/index/${self:provider.environment.USER_ID_INDEX}
       - Effect: Allow
         Action:
           - s3:GetObject
@@ -56,12 +75,15 @@ functions:
           path: todos
           authorizer: Auth
           cors: true
-          reqValidatorName: RequestBodyValidator
+          # reqValidatorName: RequestBodyValidator
+          request:
+            schema:
+              application/json: ${file(models/create-todo-request.json)}
           documentation:
             summary: Create a new Todo 
             description: Create a new Todo
-            requestModels:
-              'application/json': CreateTodoRequest
+            # requestModels:
+            #   'application/json': CreateTodoRequest
 
     iamRoleStatements:
       - Effect: Allow
@@ -78,12 +100,15 @@ functions:
           path: todos/{todoId}
           authorizer: Auth
           cors: true
-          reqValidatorName: RequestBodyValidator
+          # reqValidatorName: RequestBodyValidator
+          request:
+            schema:
+              application/json: ${file(models/update-todo-request.json)}
           documentation:
             summary: Update Todo 
             description: Update Todo
-            requestModels:
-              'application/json': UpdateTodoRequest
+            # requestModels:
+            #   'application/json': UpdateTodoRequest
         
     iamRoleStatements:
       - Effect: Allow
@@ -131,24 +156,29 @@ functions:
 
 resources:
   Resources:
+    
+    # RequestBodyValidator:
+    #   Type: AWS::ApiGateway::RequestValidator
+    #   Properties:
+    #     Name: 'request-body-validator'
+    #     RestApiId:
+    #       Ref: 'ApiGatewayRestApi'
+    #     ValidateRequestBody: true
+    #     ValidateRequestParameters: false
+
     TodosTable:
       Type: AWS::DynamoDB::Table
       Properties:
         AttributeDefinitions:
-          - AttributeName: todoId
-            AttributeType: S
           - AttributeName: userId
             AttributeType: S
-        KeySchema:
           - AttributeName: todoId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
             KeyType: HASH
-        GlobalSecondaryIndexes:
-          - IndexName: ${self:provider.environment.USER_ID_INDEX}
-            KeySchema:
-            - AttributeName: userId
-              KeyType: HASH
-            Projection:
-              ProjectionType: ALL
+          - AttributeName: todoId
+            KeyType: RANGE
         BillingMode: PAY_PER_REQUEST
         TableName: ${self:provider.environment.TODOS_TABLE}
 
@@ -195,13 +225,4 @@ resources:
         ResponseType: DEFAULT_4XX
         RestApiId:
           Ref: 'ApiGatewayRestApi'
-
-    RequestBodyValidator:
-      Type: AWS::ApiGateway::RequestValidator
-      Properties:
-        Name: 'request-body-validator'
-        RestApiId:
-          Ref: 'ApiGatewayRestApi'
-        ValidateRequestBody: true
-        ValidateRequestParameters: false
       
